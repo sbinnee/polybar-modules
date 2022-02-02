@@ -8,12 +8,19 @@ import (
 	"strings"
 )
 
-const root = "/sys/class/power_supply/BAT0/"
+const (
+	POLYBAR_COLOR bool = true  // color format
+	root string = "/sys/class/power_supply/BAT0/"
+	C_CRITICAL string = "#ff4500"
+	C_WARNING string = "#ffa500"
+	C_CAUTION string = "#ffff00"
+	C_GOOD string = "#00fa9a"
+)
 
-func formatSeconds(seconds int64) string {
-	h := seconds / 3600
-	m := int((seconds - h * 3600) / 60)
-	return fmt.Sprintf("%02d:%02d", h, m)
+func parseStoHM(s float64) (int64, int64) {
+	h := int64(s) / 3600
+	m := (s - float64(h) * 3600) / 60
+	return int64(h), int64(m)
 }
 
 func parseFloat(path string) float64 {
@@ -45,7 +52,10 @@ func main() {
 	chargeFull := parseFloat("charge_full")
 	chargeNow := parseFloat("charge_now")
 	currentNow := parseFloat("current_now")
-	capacity := parseString("capacity")
+	capacity, err := strconv.Atoi(parseString("capacity"))
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// fmt.Printf("charge_full : %T %v\n", chargeFull, chargeFull)
 	// fmt.Printf("charge_now  : %v\n", chargeNow)
@@ -54,11 +64,37 @@ func main() {
 	var seconds float64
 	if status == "Charging" {
 		seconds = 3600 * (chargeFull - chargeNow) / currentNow
-		fmt.Printf("%v%% %v\n", capacity, formatSeconds(int64(seconds)))
+		h, m := parseStoHM(seconds)
+		if capacity >= 100 {
+			if POLYBAR_COLOR {
+				fmt.Printf("%%{F%s}%s%%{F-}\n", C_GOOD, "FULL")
+			} else {
+				fmt.Println("FULL")
+			}
+		} else {
+			if POLYBAR_COLOR {
+				fmt.Printf("%%{F%s}%v%% %%{F-}%02d:%02d\n", C_GOOD, capacity, h, m)
+			} else {
+				fmt.Printf("%v%% %02d:%02d\n", capacity, h, m)
+			}
+		}
 	} else if status == "Discharging" {
 		seconds = 3600 * chargeNow / currentNow
-		fmt.Printf("%v%% %v\n", capacity, formatSeconds(int64(seconds)))
+		h, m := parseStoHM(seconds)
+		if POLYBAR_COLOR {
+			if h < 1 {
+				fmt.Printf("%%{F%s}%v%% %%{F-}%02d:%02d\n", C_CRITICAL, capacity, h, m)
+			} else {
+				fmt.Printf("%v%% %02d:%02d\n", capacity, h, m)
+			}
+		} else {
+			fmt.Printf("%v%% %02d:%02d\n", capacity, h, m)
+		}
 	} else {
-		fmt.Println("FULL")
+		if POLYBAR_COLOR {
+			fmt.Printf("%%{F%s}%s%%{F-}\n", C_GOOD, "FULL")
+		} else {
+			fmt.Println("FULL")
+		}
 	}
 }
