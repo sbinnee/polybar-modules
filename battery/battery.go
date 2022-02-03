@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -48,53 +51,85 @@ func parseString(path string) string {
 }
 
 func main() {
-	status := parseString("status")  // "Charging" | "Discharging"
-	chargeFull := parseFloat("charge_full")
-	chargeNow := parseFloat("charge_now")
-	currentNow := parseFloat("current_now")
-	capacity, err := strconv.Atoi(parseString("capacity"))
+	interval := os.Getenv("INTERVAL")
+	// default: 5 seconds
+	if interval == "" {
+		interval = "5"
+	}
+	d, err := strconv.Atoi(interval)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	// fmt.Printf("charge_full : %T %v\n", chargeFull, chargeFull)
-	// fmt.Printf("charge_now  : %v\n", chargeNow)
-	// fmt.Printf("current_now : %v\n", currentNow)
-
+	duration := time.Duration(d * 1000)
+	var status string
+	var chargeFull float64
+	var chargeNow float64
+	var currentNow float64
+	var capacity int
 	var seconds float64
-	if status == "Charging" {
-		seconds = 3600 * (chargeFull - chargeNow) / currentNow
-		h, m := parseStoHM(seconds)
-		if capacity >= 100 {
+	var h int64
+	var m int64
+	var voltageNow float64
+	var wattage float64
+	var strWattage string
+	for {
+		status = parseString("status")  // "Charging" | "Discharging"
+		chargeFull = parseFloat("charge_full")
+		chargeNow = parseFloat("charge_now")
+		currentNow = parseFloat("current_now")
+		capacity, err = strconv.Atoi(parseString("capacity"))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// fmt.Printf("charge_full : %T %v\n", chargeFull, chargeFull)
+		// fmt.Printf("charge_now  : %v\n", chargeNow)
+		// fmt.Printf("current_now : %v\n", currentNow)
+
+		if status == "Charging" {
+			seconds = 3600 * (chargeFull - chargeNow) / currentNow
+			h, m = parseStoHM(seconds)
+			if capacity >= 100 {
+				if POLYBAR_COLOR {
+					fmt.Printf("%%{F%s}%s%%{F-}\n", C_GOOD, "FULL")
+				} else {
+					fmt.Println("FULL")
+				}
+			} else {
+				if POLYBAR_COLOR {
+					fmt.Printf("%%{F%s}%v%% %%{F-}%02d:%02d\n", C_GOOD, capacity, h, m)
+				} else {
+					fmt.Printf("%v%% %02d:%02d\n", capacity, h, m)
+				}
+			}
+		} else if status == "Discharging" {
+			seconds = 3600 * chargeNow / currentNow
+			h, m = parseStoHM(seconds)
+			voltageNow = parseFloat("voltage_now")
+			wattage = currentNow * voltageNow / math.Pow10(6)
+			if POLYBAR_COLOR {
+				if wattage > 10 {
+					strWattage = fmt.Sprintf("%%{F%s}%.1fW%%{F-}", C_CRITICAL, wattage)
+				} else if wattage > 8 {
+					strWattage = fmt.Sprintf("%%{F%s}%.1fW%%{F-}", C_WARNING, wattage)
+				} else if wattage > 6 {
+					strWattage = fmt.Sprintf("%%{F%s}%.1fW%%{F-}", C_CAUTION, wattage)
+				} else { strWattage = fmt.Sprintf("%.1fW", wattage) }
+				if h < 1 {
+					fmt.Printf("%%{F%s}%v%% %%{F-}%02d:%02d (%s)\n", C_CRITICAL, capacity, h, m, strWattage)
+				} else {
+					fmt.Printf("%v%% %02d:%02d (%s)\n", capacity, h, m, strWattage)
+				}
+			} else {
+				fmt.Printf("%v%% %02d:%02d\n", capacity, h, m)
+			}
+		} else {
 			if POLYBAR_COLOR {
 				fmt.Printf("%%{F%s}%s%%{F-}\n", C_GOOD, "FULL")
 			} else {
 				fmt.Println("FULL")
 			}
-		} else {
-			if POLYBAR_COLOR {
-				fmt.Printf("%%{F%s}%v%% %%{F-}%02d:%02d\n", C_GOOD, capacity, h, m)
-			} else {
-				fmt.Printf("%v%% %02d:%02d\n", capacity, h, m)
-			}
 		}
-	} else if status == "Discharging" {
-		seconds = 3600 * chargeNow / currentNow
-		h, m := parseStoHM(seconds)
-		if POLYBAR_COLOR {
-			if h < 1 {
-				fmt.Printf("%%{F%s}%v%% %%{F-}%02d:%02d\n", C_CRITICAL, capacity, h, m)
-			} else {
-				fmt.Printf("%v%% %02d:%02d\n", capacity, h, m)
-			}
-		} else {
-			fmt.Printf("%v%% %02d:%02d\n", capacity, h, m)
-		}
-	} else {
-		if POLYBAR_COLOR {
-			fmt.Printf("%%{F%s}%s%%{F-}\n", C_GOOD, "FULL")
-		} else {
-			fmt.Println("FULL")
-		}
+		time.Sleep(duration * time.Millisecond)
 	}
 }
