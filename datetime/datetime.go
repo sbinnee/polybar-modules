@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	const format = "(Mon) Jan 01 🕖 15:04"
+	const format = "(Mon) Jan 02 🕖 15:04"
 
 	// duration
 	interval := os.Getenv("INTERVAL")
