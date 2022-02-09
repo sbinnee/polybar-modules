@@ -89,22 +89,21 @@ func floatToString(input_num float64) string {
 }
 
 func main() {
-	interval := os.Getenv("INTERVAL")
-	// default: 5 seconds
-	if interval == "" {
-		interval = "5"
-	}
-	d, err := strconv.Atoi(interval)
-	if err != nil {
-		log.Fatal(err)
-	}
-	duration := time.Duration(d * 1000)
+	const pIntv = 10000 // print interval in ms
+	const rIntv = 2500  // read interval in ms
+	const pr = pIntv / rIntv  // p over r
+	// durIntv := time.Duration(pIntv * 1000)
+	durRIntv := time.Duration(rIntv)
 	var now time.Time
 	var status string
 	var chargeFull float64 = 0
 	var chargeNow float64 = 0
 	var currentNow float64 = 0
 	var capacity int = 0
+	var capacitySum int = 0
+	var chargeSum float64 = 0
+	var currentSum float64 = 0
+	var voltageSum float64 = 0
 	var seconds float64
 	var h int64
 	var m int64
@@ -123,27 +122,59 @@ func main() {
 	}
 
 	for {
-		now = time.Now()
-		status = parseString("status") // "Charging" | "Discharging"
-		chargeFull = parseFloat("charge_full")
-		chargeNow = parseFloat("charge_now")
-		currentNow = parseFloat("current_now")
-		voltageNow = parseFloat("voltage_now") / math.Pow10(3)
-		capacity, err = strconv.Atoi(parseString("capacity"))
-		if err != nil {
-			log.Fatal(err)
+		var count int = 0
+		for count < pr {
+			now = time.Now()
+			status = parseString("status") // "Charging" | "Discharging"
+			chargeFull = parseFloat("charge_full")
+			chargeNow = parseFloat("charge_now")
+			currentNow = parseFloat("current_now")
+			voltageNow = parseFloat("voltage_now") / math.Pow10(3)
+			capacity, err = strconv.Atoi(parseString("capacity"))
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			// fmt.Printf("charge_full : %T %v\n", chargeFull, chargeFull)
+			// fmt.Printf("charge_now  : %v\n", chargeNow)
+			// fmt.Printf("current_now : %v\n", currentNow)
+
+			if status == "Charging" {
+				// wattage is not meaningful when Charging
+				wattage = -1
+			} else if status == "Discharging" {
+				wattage = currentNow * voltageNow / math.Pow10(3)
+			} else {
+				// wattage is not meaningful when Full
+				wattage = -1
+			}
+			// Write to file
+			row[0] = now.Format(T_FORMAT)
+			row[1] = floatToString(chargeFull)
+			row[2] = floatToString(chargeNow)
+			row[3] = floatToString(currentNow)
+			row[4] = strconv.Itoa(capacity)
+			row[5] = floatToString(voltageNow)
+			row[6] = floatToString(wattage)
+			row[7] = status
+			if err := addrow(path.Join(logdir, now.Format("2006-01-02")+".csv"), row); err != nil {
+				fmt.Printf("Warn: %v\n", err)
+			}
+			chargeSum += chargeNow
+			currentSum += currentNow
+			voltageSum += voltageNow
+			capacitySum += capacity
+			count++
+			time.Sleep(durRIntv * time.Millisecond)
 		}
-
-		// fmt.Printf("charge_full : %T %v\n", chargeFull, chargeFull)
-		// fmt.Printf("charge_now  : %v\n", chargeNow)
-		// fmt.Printf("current_now : %v\n", currentNow)
-
+		chargeSum /= pr
+		currentSum /= pr
+		voltageSum /= pr
+		capacitySum /= pr
 		if status == "Charging" {
-			seconds = 3600 * (chargeFull - chargeNow) / currentNow
+			seconds = 3600 * (chargeFull - chargeSum) / currentSum
 			h, m = parseStoHM(seconds)
-			// wattage is not meaningful when Charging
-			wattage = -1
-			if capacity >= 100 {
+			if capacitySum >= 100 {
 				if POLYBAR_COLOR {
 					fmt.Printf("%%{F%s}%s%%{F-}\n", C_GOOD, "FULL")
 				} else {
@@ -151,15 +182,15 @@ func main() {
 				}
 			} else {
 				if POLYBAR_COLOR {
-					fmt.Printf("%%{F%s}%v%% %%{F-}%02d:%02d\n", C_GOOD, capacity, h, m)
+					fmt.Printf("%%{F%s}%v%% %%{F-}%02d:%02d\n", C_GOOD, capacitySum, h, m)
 				} else {
-					fmt.Printf("%v%% %02d:%02d\n", capacity, h, m)
+					fmt.Printf("%v%% %02d:%02d\n", capacitySum, h, m)
 				}
 			}
 		} else if status == "Discharging" {
-			seconds = 3600 * chargeNow / currentNow
+			seconds = 3600 * chargeSum / currentSum
 			h, m = parseStoHM(seconds)
-			wattage = currentNow * voltageNow / math.Pow10(3)
+			wattage = currentSum * voltageSum / math.Pow10(3)
 			if POLYBAR_COLOR {
 				if wattage > 10 {
 					strWattage = fmt.Sprintf("%%{F%s}%.1fW%%{F-}", C_CRITICAL, wattage)
@@ -171,34 +202,25 @@ func main() {
 					strWattage = fmt.Sprintf("%.1fW", wattage)
 				}
 				if h < 1 {
-					fmt.Printf("%%{F%s}%v%% %%{F-}%02d:%02d (%s)\n", C_CRITICAL, capacity, h, m, strWattage)
+					fmt.Printf("%%{F%s}%v%% %%{F-}%02d:%02d (%s)\n", C_CRITICAL, capacitySum, h, m, strWattage)
 				} else {
-					fmt.Printf("%v%% %02d:%02d (%s)\n", capacity, h, m, strWattage)
+					fmt.Printf("%v%% %02d:%02d (%s)\n", capacitySum, h, m, strWattage)
 				}
 			} else {
-				fmt.Printf("%v%% %02d:%02d\n", capacity, h, m)
+				fmt.Printf("%v%% %02d:%02d\n", capacitySum, h, m)
 			}
 		} else {
-			// wattage is not meaningful when Full
-			wattage = -1
 			if POLYBAR_COLOR {
 				fmt.Printf("%%{F%s}%s%%{F-}\n", C_GOOD, "FULL")
 			} else {
 				fmt.Println("FULL")
 			}
 		}
-		// Write to file
-		row[0] = now.Format(T_FORMAT)
-		row[1] = floatToString(chargeFull)
-		row[2] = floatToString(chargeNow)
-		row[3] = floatToString(currentNow)
-		row[4] = strconv.Itoa(capacity)
-		row[5] = floatToString(voltageNow)
-		row[6] = floatToString(wattage)
-		row[7] = status
-		if err := addrow(path.Join(logdir, now.Format("2006-01-02") + ".csv"), row); err != nil {
-			fmt.Printf("Warn: %v\n", err)
-		}
-		time.Sleep(duration * time.Millisecond)
+		chargeSum = 0
+		currentSum = 0
+		voltageSum = 0
+		capacitySum = 0
+		count = 0
+		// time.Sleep(durIntv * time.Millisecond)
 	}
 }
