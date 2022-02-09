@@ -128,6 +128,7 @@ func main() {
 		chargeFull = parseFloat("charge_full")
 		chargeNow = parseFloat("charge_now")
 		currentNow = parseFloat("current_now")
+		voltageNow = parseFloat("voltage_now") / math.Pow10(3)
 		capacity, err = strconv.Atoi(parseString("capacity"))
 		if err != nil {
 			log.Fatal(err)
@@ -140,6 +141,8 @@ func main() {
 		if status == "Charging" {
 			seconds = 3600 * (chargeFull - chargeNow) / currentNow
 			h, m = parseStoHM(seconds)
+			// wattage is not meaningful when Charging
+			wattage = -1
 			if capacity >= 100 {
 				if POLYBAR_COLOR {
 					fmt.Printf("%%{F%s}%s%%{F-}\n", C_GOOD, "FULL")
@@ -156,8 +159,7 @@ func main() {
 		} else if status == "Discharging" {
 			seconds = 3600 * chargeNow / currentNow
 			h, m = parseStoHM(seconds)
-			voltageNow = parseFloat("voltage_now")
-			wattage = currentNow * voltageNow / math.Pow10(6)
+			wattage = currentNow * voltageNow / math.Pow10(3)
 			if POLYBAR_COLOR {
 				if wattage > 10 {
 					strWattage = fmt.Sprintf("%%{F%s}%.1fW%%{F-}", C_CRITICAL, wattage)
@@ -177,6 +179,8 @@ func main() {
 				fmt.Printf("%v%% %02d:%02d\n", capacity, h, m)
 			}
 		} else {
+			// wattage is not meaningful when Full
+			wattage = -1
 			if POLYBAR_COLOR {
 				fmt.Printf("%%{F%s}%s%%{F-}\n", C_GOOD, "FULL")
 			} else {
