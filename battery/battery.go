@@ -32,7 +32,8 @@ func parseStoHM(s float64) (int64, int64) {
 func parseFloat(path string) float64 {
 	buf, err := ioutil.ReadFile(root + path)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("err: ReadFile")
+		// log.Fatal(err)
 	}
 	str := string(buf)
 	str = strings.Replace(str, "\n", "", -1)
@@ -46,7 +47,8 @@ func parseFloat(path string) float64 {
 func parseString(path string) string {
 	buf, err := ioutil.ReadFile(root + path)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("err: ReadFile")
+		// log.Fatal(err)
 	}
 	str := string(buf)
 	str = strings.Replace(str, "\n", "", -1)
@@ -90,7 +92,7 @@ func floatToString(input_num float64) string {
 
 func main() {
 	const pIntv = 10000 // print interval in ms
-	const rIntv = 2500  // read interval in ms
+	const rIntv = 10000  // read interval in ms
 	const pr = pIntv / rIntv  // p over r
 	// durIntv := time.Duration(pIntv * 1000)
 	durRIntv := time.Duration(rIntv)
@@ -109,12 +111,12 @@ func main() {
 	var m int64
 	var voltageNow float64 = 0
 	var wattage float64 = 0
-	var strWattage string
+	// var strWattage string
 	row := make([]string, 8)
 
 	homedir, err := os.UserHomeDir()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("err: Can't find $HOME")
 	}
 	logdir := path.Join(homedir, ".cache", "battery")
 	if _, err := os.Stat(logdir); os.IsNotExist(err) {
@@ -188,26 +190,48 @@ func main() {
 				}
 			}
 		} else if status == "Discharging" {
-			seconds = 3600 * chargeSum / currentSum
-			h, m = parseStoHM(seconds)
-			wattage = currentSum * voltageSum / math.Pow10(3)
+			// seconds = 3600 * chargeSum / currentSum
+			// h, m = parseStoHM(seconds)
+			// wattage = currentSum * voltageSum / math.Pow10(3)
 			if POLYBAR_COLOR {
-				if wattage > 10 {
-					strWattage = fmt.Sprintf("%%{F%s}%.1fW%%{F-}", C_CRITICAL, wattage)
-				} else if wattage > 8 {
-					strWattage = fmt.Sprintf("%%{F%s}%.1fW%%{F-}", C_WARNING, wattage)
-				} else if wattage > 6 {
-					strWattage = fmt.Sprintf("%%{F%s}%.1fW%%{F-}", C_CAUTION, wattage)
+				// if wattage > 10 {
+				// 	strWattage = fmt.Sprintf("%%{F%s}%.1fW%%{F-}", C_CRITICAL, wattage)
+				// } else if wattage > 8 {
+				// 	strWattage = fmt.Sprintf("%%{F%s}%.1fW%%{F-}", C_WARNING, wattage)
+				// } else if wattage > 6 {
+				// 	strWattage = fmt.Sprintf("%%{F%s}%.1fW%%{F-}", C_CAUTION, wattage)
+				// } else {
+				// 	strWattage = fmt.Sprintf("%.1fW", wattage)
+				// }
+				if capacitySum < 10 {
+					seconds = 3600 * chargeSum / currentSum
+					h, m = parseStoHM(seconds)
+					if h < 1 {
+						fmt.Printf("%%{F%s}▮▯▯▯▯ %02d:%02d%%{F-}\n", C_CRITICAL, h, m)
+					} else {
+						fmt.Printf("%%{F%s}▮▯▯▯▯%%{F-}\n", C_CRITICAL)
+					}
+				} else if capacitySum < 20 {
+					fmt.Printf("%%{F%s}▮▮▯▯▯%%{F-}\n", C_WARNING)
+				} else if capacitySum < 40 {
+					fmt.Printf("%%{F%s}▮▮▮▯▯%%{F-}\n", C_CAUTION)
+				} else if capacitySum < 80 {
+					fmt.Println("▮▮▮▮▯")
 				} else {
-					strWattage = fmt.Sprintf("%.1fW", wattage)
-				}
-				if h < 1 {
-					fmt.Printf("%%{F%s}%v%% %%{F-}%02d:%02d (%s)\n", C_CRITICAL, capacitySum, h, m, strWattage)
-				} else {
-					fmt.Printf("%v%% %02d:%02d (%s)\n", capacitySum, h, m, strWattage)
+					fmt.Println("▮▮▮▮▮")
 				}
 			} else {
-				fmt.Printf("%v%% %02d:%02d\n", capacitySum, h, m)
+				if capacitySum < 10 {
+					fmt.Println("▮▯▯▯▯")
+				} else if capacitySum < 20 {
+					fmt.Println("▮▮▯▯▯")
+				} else if capacitySum < 40 {
+					fmt.Println("▮▮▮▯▯")
+				} else if capacitySum < 80 {
+					fmt.Println("▮▮▮▮▯")
+				} else {
+					fmt.Println("▮▮▮▮▮")
+				}
 			}
 		} else {
 			if POLYBAR_COLOR {
